@@ -23,8 +23,8 @@ function wrConsole {
     echo "${TAB}isMOUNTED on     : $isMOUNTED"
     echo "${TAB}preferred MPoint : $prefMPoint"
     echo "${TAB}path             : $currMPath"
-    echo "${TAB}requested UUID   : ${reqUUID}"
-    echo "${TAB}is it in myTable : $isValidUUID"
+    [[ "$ACTION" != 'status' ]] && echo "${TAB}requested UUID   : ${reqUUID}"
+    # echo "${TAB}is it in myTable : $isValidUUID"
     echo
     set -u
 }
@@ -35,13 +35,7 @@ function wrConsole {
 # ========================================================================================
 function readingConfigFile {
     local confFile="$1"
-
-    if [[ "$ACTION" == 'list' ]]; then
-        echo "${TAB}--------------------------------------------------------"
-        echo "${TAB}UUID            TYPE    preferred MPoint"
-        echo "${TAB}--------------------------------------------------------"
-
-    fi
+    local lUUID="$2"
 
         # ---------------------------------------------------------
         # - Reading configuration file $ConfFile
@@ -49,20 +43,25 @@ function readingConfigFile {
         # - ...perchè apre un subShell e si perdono le Variabili
         # ---------------------------------------------------------
     isValidUUID='false'
+    if [[ "$ACTION" != "status"  && -n "$reqUUID" ]]; then
+        echo "missing UUID parameter..."
+        exit 1
+    fi
 
     while read UUID TYPE prefMPoint; do
-        if [[ "$ACTION" == 'list' ]]; then
+        if [[ "$ACTION" == 'status' ]]; then
             if [[ "$UUID" != "#" ]]; then
-                echo "${TAB}$UUID       $TYPE       $prefMPoint"
+                verifyDiskByUUID $UUID
+                wrConsole "status per UUID: $UUID"
             fi
 
-        elif [[ "$UUID" == "$reqUUID" ]]; then
+        elif [[ "$UUID" == "$lUUID" ]]; then
             isValidUUID='true'
             break
         fi
 
     done < $confFile
-    [[ "$ACTION" == 'list' ]] && echo && exit 1
+    [[ "$ACTION" == 'status' ]] && echo && exit 1
 }
 
 
@@ -72,44 +71,35 @@ function readingConfigFile {
 # -
 ################################
 function verifyDiskByUUID {
-    # isValidUUID='false'
-    # currMPath="-"
+    local uuid=$1
     isMOUNTED='-'
-    # prefMPoint="-"
-    # diskExists='false'
+    local rCode=0
 
 
-        # tabellina dove inseriamo gli UUID che riconosciamo validi
-    # [[ "$reqUUID" == '34F4-73E2' ]] && isValidUUID='true' && prefMPoint='/home/Loreto32GB' && TYPE='exfat'
-    # [[ "$reqUUID" == '24C4-EA91' ]] && isValidUUID='true' && prefMPoint='/home/Loreto32GB' && TYPE='exfat'
-    # [[ "$reqUUID" == '1C01-1919' ]] && isValidUUID='true' && prefMPoint='/home/Loreto32GB' && TYPE='vfat'
-    # [[ "$reqUUID" == '1C03-1548' ]] && isValidUUID='true' && prefMPoint='/home/Loreto32GB' && TYPE='vfat'
 
-        # verifichiamo se lo UUID è presente nel sistema
+        # verifichiamo se lo UUID sia presente nel sistema
     # currMPath=$(readlink -f /dev/disk/by-uuid/${reqUUID})
-    currMPath=$(blkid -U ${reqUUID})
+    # currMPath=$(blkid -U ${reqUUID})
+    currMPath=$(/sbin/blkid -U ${uuid})
 
 
+    # rCode=0
+    diskExists='false'
     if [[ -n "$currMPath" ]]; then
         diskExists='true'
         mountLine=$(mount | grep $currMPath)
 
         if [[ -n "$mountLine" ]]; then
             isMOUNTED=$(echo $mountLine | cut -f3 -d\ )
-            # wrConsole "disk is already mounted:"
-
-        # else
-            # isMOUNTED='-'
-            # wrConsole "disk exist but is NOT mounted"
         fi
 
     else
-        # currMPath='-'
-        wrConsole "disk doesn't exists on system."
-        exit 1
+        # wrConsole "disk doesn't exists on system."
+        rCode=1
 
     fi
 
+    # return $rCode
 }
 
 
@@ -169,47 +159,53 @@ set -u # or set -o nounset
     baseDir=${scriptDir%/.*}                                                      # Remove /. finale (se esiste)
     configFile="${baseDir}/LnMount.conf"
 
-    [[ "$ACTION" != 'mount' && "$ACTION" != "umount" ]] && ACTION='list'
+    [[ "$ACTION" != 'mount' && "$ACTION" != "umount" ]] && ACTION='status'
 
-    readingConfigFile "$configFile"
-    if [[ "$isValidUUID" != "true" ]]; then
-        wrConsole "disk will not mounted because it is not in myTable."
-        exit 1
-    fi
+    readingConfigFile "$configFile" "$reqUUID"
+    # if [[ "$isValidUUID" != "true"  && -n "$reqUUID" ]]; then
+    #     wrConsole "disk  is not in myTable."
+    #     exit 1
+    # fi
 
 
-    verifyDiskByUUID
-    if   [[ "$ACTION" == "mount" ]]; then
-        if [[ "$isMOUNTED" == "-" ]]; then
-            mountDiskByUUID
-            verifyDiskByUUID
-            wrConsole "disk status after mount"
-            if [[ "$rCode" -ne 0 ]]; then
-                echo "sudo lsof $isMOUNTED"
-                echo "sudo fuser -vm $isMOUNTED"
+    # [[ -z "$reqUUID" ]] && echo "missing UUID parameter" && exit 1
+    verifyDiskByUUID "$reqUUID"
+
+    exit
+
+    case "$ACTION" in
+        mount)
+
+            if [[ "$isMOUNTED" == "-" ]]; then
+                mountDiskByUUID
+                verifyDiskByUUID $reqUUID
+                wrConsole "disk status after mount"
+                if [[ "$rCode" -ne 0 ]]; then
+                    echo "sudo lsof $isMOUNTED"
+                    echo "sudo fuser -vm $isMOUNTED"
+                fi
+            else
+                wrConsole "disk status is already mounted."
             fi
-        else
-            wrConsole "disk status is already mounted."
-        fi
+            ;;
 
+        umount)
+            [[ -z "$reqUUID" ]] && echo "missing UUID parameter" && exit 1
 
-    elif [[ "$ACTION" == "umount" ]]; then
-        if [[ ! "$isMOUNTED" == "-" ]]; then
-            uMountDiskByUUID
-            verifyDiskByUUID
-            wrConsole "disk status after umount."
-            if [[ "$rCode" -ne 0 ]]; then
-                echo "sudo lsof $isMOUNTED"
-                echo "sudo fuser -vm $isMOUNTED"
+            if [[ ! "$isMOUNTED" == "-" ]]; then
+                uMountDiskByUUID
+                verifyDiskByUUID $reqUUID
+                wrConsole "disk status after umount."
+                if [[ "$rCode" -ne 0 ]]; then
+                    echo "sudo lsof $isMOUNTED"
+                    echo "sudo fuser -vm $isMOUNTED"
+                fi
+            else
+                wrConsole "disk status is already unMounted."
             fi
-        else
-            wrConsole "disk status is already unMounted."
-        fi
+            ;;
 
-    # else
-    #     ACTION='list'
-    #     echo 'sono qui'
-    #     exit
-        # readingConfigFile 'LnMount.conf' 'LIST'
+        *)
+            echo 'sono qui'
 
-    fi
+    esac

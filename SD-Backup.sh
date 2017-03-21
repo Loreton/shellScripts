@@ -127,6 +127,11 @@ nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=959488 of=/dev/sda
 ################################################################################
 nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=970240 of=/mnt/LN1TB_A/Appo/PImage_2015-08-12.img &
 
+## ---- compressed image
+imageName='/home/Loreto32GB/PI-Image/LnPi23_2017-03-21.img.gz'
+nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=970240 | gzip -c > $imageName &
+
+
 970240+0 records in
 970240+0 records out
 7948206080 bytes (7.9 GB) copied, 3731.45 s, 2.1 MB/s
