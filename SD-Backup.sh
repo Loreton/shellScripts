@@ -1,14 +1,16 @@
 #!/bin/bash
 
 # Backup della schedina SD del RaspBerry
-#
+#   sudo fdisk -l
 #                                                   Bytes        Blocks 512     Blocks 1024      Blocks 8192
 # KingSton 1 microSD - 8GB - N0514-001 A00LF      7969177600      15564800       7782400           972800
 # KingSton 1 microSD - 8GB - N0538-002 A01LF      7860125696      15351808       7675904           959488
-# SanDisk 1 microSD  - 8GB - 5227DKG6T1H5         7948206080      15523840       7761920           970240
+# SanDisk  1 microSD - 8GB - 5227DKG6T1H5         7948206080      15523840       7761920           970240
 
 
-nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=959488 of=/dev/sda &
+
+
+
 
 
 # ###############################################################
@@ -121,15 +123,56 @@ nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=959488 of=/dev/sda
     # oppure:
         # cat /sys/class/block/sda/size    (in blocchi da 512)
 
+
+
 # Per schedina Kingdom 8GBytes
-nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=959488 of=/dev/sda &
+function Kingdom_8GBytes() {
+    BLOCKS='959488'
+    BLOCK_SIZE='8192'
+    nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=959488 of=/dev/sda &
+}
 
-################################################################################
-nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=970240 of=/mnt/LN1TB_A/Appo/PImage_2015-08-12.img &
 
-## ---- compressed image
-imageName='/home/Loreto32GB/PI-Image/LnPi23_2017-03-21.img.gz'
-nohup sudo dd if=/dev/mmcblk0 conv=sync,noerror bs=8192 count=970240 | gzip -c > $imageName &
+
+function attuale_8GBytes() {
+    BLOCK_SIZE='4M'
+    BLOCK_SIZE='8192'
+    BLOCKS='970240'
+    imageName="/home/Loreto32GB/PI-Image/LnPi23_2017-03-21.img.gz"
+    imageName="/home/Loreto32GB/PI-Image/LnPi23_$(date +%Y%m%d)_${BLOCK_SIZE}.img.gz"
+}
+
+function restore() {
+# -------------------------------
+# ---- restore image
+# -------------------------------
+    gzip -dc $imageName | sudo dd bs=$BLOCK_SIZE of=/dev/mmcblk0
+        # uncompressed image
+    sudo dd bs=${BLOCK_SIZE} of=/dev/mmcblk0 if=$imageName
+
+}
+
+#########################################
+# M A I N
+#########################################
+
+    GZIP='true'
+    attuale_8GBytes
+
+    if [ "$GZIP" == "true" ]; then
+        # ---- un-compressed image
+        CMD="dd if=/dev/mmcblk0 conv=sync,noerror bs=$BLOCK_SIZE count=970240 | gzip -c > "$imageName""
+    else
+        # ---- compressed image
+        CMD="dd if=/dev/mmcblk0 conv=sync,noerror bs=$BLOCK_SIZE count=970240 -of="$imageName""
+    fi
+    echo $CMD
+    if [ "$1" == "--GO" ]; then
+        eval nohup sudo "$CMD" &
+        # oppure provare.... eval sudo -b "$CMD" &
+
+    fi
+    exit
 
 
 970240+0 records in
